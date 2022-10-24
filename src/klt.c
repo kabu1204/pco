@@ -6,6 +6,7 @@
 #include "sigctx.h"
 #include "signal.h"
 #include "pthread.h"
+#include <pthread.h>
 #include <stdio.h>
 #include <sys/ucontext.h>
 #include <time.h>
@@ -106,7 +107,7 @@ void sa_sighandler(int signum, siginfo_t *info, void *ctx) {
 
     inject_call0(&sigctx, preempt_call);
 
-    dumpgregs(&sigctx);
+    // dumpgregs(&sigctx);
     write(1, "leaving sighandler\n", 19);
 }
 

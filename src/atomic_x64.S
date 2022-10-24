@@ -49,12 +49,14 @@ atomic_cas_u64:
 atomic_bts_u64:
     LOCK
     btsq %rsi, (%rdi)
+    movq $0, %rax
     setc %al
     retq
 
 atomic_btr_u64:
     LOCK
     btrq %rsi, (%rdi)
+    movq $0, %rax
     setc %al
     retq
 
