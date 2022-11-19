@@ -7,14 +7,7 @@
 #include <sys/types.h>
 #include <sys/ucontext.h>
 #include "ucontext.h"
-
-inline size_t align16_forward(size_t x) {
-    return x & ~(size_t)(0x0F);
-}
-
-inline size_t align16_backward(size_t x) {
-    return (x + (size_t)(15)) & ~(size_t)(15);
-}
+#include "stdalign.h"
 
 struct sigcontext* regs(sigctxt_t *c);
 

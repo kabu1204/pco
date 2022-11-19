@@ -5,6 +5,8 @@
 
 static atomic_ulong global_id = 0;
 
+
+
 #define new_ult_id() (++global_id)
 
 ult_t* ult_create(size_t size) {

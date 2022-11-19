@@ -6,6 +6,9 @@
 .globl atomic_store_u64
 .type atomic_store_u64, @function
 
+.globl atomic_add_u64
+.type atomic_add_u64, @function
+
 .globl atomic_cas_u64
 .type atomic_cas_u64, @function
 
@@ -18,12 +21,29 @@
 .globl read_rflags
 .type read_rflags, @function
 
+.globl atomic_load_u128
+.type atomic_load_u128, @function
+
+.globl atomic_cas_u128
+.type atomic_cas_u128, @function
+
 atomic_load_u64:
     movq (%rdi), %rax
     retq
 
 atomic_store_u64:
     xchgq %rsi, (%rdi)
+    retq
+
+// atomically behaves as follows:
+// atomic_add_u64(u64 *addr, u64 delta):
+//     *addr += delta;
+//     return *delta;
+atomic_add_u64:
+    movq %rsi, %rax
+    LOCK
+    xaddq %rax, (%rdi)
+    addq %rsi, %rax
     retq
 
 // atomically behaves as follows:
@@ -64,4 +84,25 @@ read_rflags:
     pushfq
     addq $8, %rsp
     movq (%rsp), %rax
+    retq
+
+atomic_load_u128:
+    movq %rax, %rbx
+    movq %rdx, %rcx
+    LOCK
+    cmpxchg16b (%rdi)
+    retq
+
+// %rdi addr
+// %rsi old1
+// %rdx old2
+// %rcx new1
+// %r8  new2
+atomic_cas_u128:
+    movq %rsi, %rax
+    movq %rcx, %rbx
+    movq %r8, %rcx
+    LOCK
+    cmpxchg16b (%rdi)
+    sete %al
     retq
