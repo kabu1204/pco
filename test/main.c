@@ -2,6 +2,7 @@
 #include "stdio.h"
 #include "sigctx.h"
 #include "types.h"
+#include <pthread.h>
 #include <stddef.h>
 #include <sys/ucontext.h>
 #include <unistd.h>
@@ -9,7 +10,111 @@
 #include "atomic.h"
 #include "common.h"
 
+struct scq_test_ctl{
+    scq_t* q;
+    int start;
+    int end;
+};
+
+u64 cnt;
+u64 cnt2;
+
+void* scq_push_fn(void* arg){
+    struct scq_test_ctl* ctl = arg;
+    int step, end, start, i;
+    scq_t* q;
+    start = ctl->start;
+    end = ctl->end;
+    q = ctl->q;
+    for(i=start;i<end;++i){
+        // atomic_add_u64(&cnt, 1);
+        if(!scq_push(q, i)){
+            printf("push failed: %d\n", end);
+        }
+    }
+    // printf("push finish: %d %ld\n", end, cnt);
+    return NULL;
+}
+void* scq_pop_fn(void* arg){
+    struct scq_test_ctl* ctl = arg;
+    int step, end, start, i;
+    scq_t* q;
+    start = ctl->start;
+    end = ctl->end;
+    q = ctl->q;
+    u64 val;
+    for(i=start;i<end;++i){
+        while(!scq_pop(q, &val)){
+            printf("pop failed: %ld %ld %ld %ld\n", q->head, q->tail, q->threshold, cnt);
+        }
+        atomic_add_u64(&cnt2, 1);
+    }
+    printf("pop finish: %d %ld\n", end, cnt2);
+    return NULL;
+}
+
+void* lscq_push_fn(void* arg){
+    struct scq_test_ctl* ctl = arg;
+    int step, end, start, i;
+    lscq_t* q;
+    start = ctl->start;
+    end = ctl->end;
+    q = ctl->q;
+    for(i=start;i<end;++i){
+        atomic_add_u64(&cnt, 1);
+        lscq_push(q, i);
+    }
+    printf("push finish: %d %ld\n", end, cnt);
+    return NULL;
+}
+void* lscq_pop_fn(void* arg){
+    struct scq_test_ctl* ctl = arg;
+    int step, end, start, i;
+    lscq_t* q;
+    start = ctl->start;
+    end = ctl->end;
+    q = ctl->q;
+    u64 val;
+    for(i=start;i<end;++i){
+        while(!lscq_pop(q, &val)){
+            printf("pop failed: %ld\n", cnt2);
+        }
+        atomic_add_u64(&cnt2, 1);
+    }
+    printf("pop finish: %d %ld\n", end, cnt2);
+    return NULL;
+}
+
+void scq_test(){
+    int i;
+    int per_thread = 65536*10/16;
+    cnt = 0;
+    pthread_t t[32];
+    struct scq_test_ctl ctls[32];
+    lscq_t* q = lscq_create();
+    for(i=0;i<32;i+=2){
+        ctls[i+1].q = ctls[i].q = q;
+        ctls[i+1].start = ctls[i].start = (i/2)*per_thread;
+        ctls[i+1].start = ctls[i].end = (i/2+1)*per_thread;
+        printf("i:  %d, %d\n", ctls[i].start, ctls[i].end);
+        printf("i+1:%d, %d\n", ctls[i+1].start, ctls[i+1].end);
+    }
+    for(i=0;i<32;i+=2){
+        pthread_create(&t[i], NULL, lscq_push_fn, &ctls[i]);
+        pthread_create(&t[i+1], NULL, lscq_pop_fn, &ctls[i+1]);
+    }
+    for(i=0;i<32;i+=2){
+        pthread_join(t[i], NULL);
+        pthread_join(t[i+1], NULL);
+    }
+    printf("cnt=%ld\n", cnt);
+}
+
 int main(){
+    scq_test();
+
+    return 1;
+
     printf("align of scq: %ld\n", _Alignof(scq_t));
     scq_t* x = scq_create();
     printf("addr of scq: %p\n", x);

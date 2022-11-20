@@ -6,6 +6,8 @@
 #include "atomic.h"
 #include "stdlib.h"
 #include <stdlib.h>
+#include "stdio.h"
+#include "unistd.h"
 
 #define SCQ_SHIFT 16
 #define SCQ_SIZE (1ull<<SCQ_SHIFT)
@@ -18,7 +20,7 @@
 #define SCQ_FLAG_SAFE (1ull<<62)
 #define SCQ_FLAG_MASK (0b11ull<<62)
 #define SCQ_CYCLE_MASK (~SCQ_FLAG_MASK)
-#define SCQ_RESET_THRESHOLD (SCQ_BUF_SIZE + 1)
+#define SCQ_RESET_THRESHOLD (SCQ_BUF_SIZE - 1)
 
 #define cache_remap_8B(idx) (((idx & SCQ_BUF_SIZE_MASK) >> (SCQ_SHIFT - 2)) | ((idx << 3) & SCQ_BUF_SIZE_MASK))
 
@@ -29,9 +31,9 @@ typedef struct scq {
     u8 __[CPU_CACHE_LINE_SIZE-sizeof(u64)];
     i64 threshold;
     u8 ___[CPU_CACHE_LINE_SIZE-sizeof(i64)];
-    struct scq* next;
     u128 buf[SCQ_BUF_SIZE+1];  // the extra 1 u128 is reserved for 16bytes alignment
     u128* entries;
+    void* next;
 } scq_t;
 
 size_t align16_backward(size_t x);
@@ -52,8 +54,10 @@ typedef struct lscq {
     scq_t* tail;
 } lscq_t;
 
-void lscq_push(scq_t* q, u64 val);
+lscq_t* lscq_create();
 
-int lscq_pop(scq_t* q, u64* val);
+void lscq_push(lscq_t* q, u64 val);
+
+int lscq_pop(lscq_t* q, u64* val);
 
 #endif
