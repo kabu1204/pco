@@ -6,7 +6,6 @@
 #include "sigctx.h"
 #include "signal.h"
 #include "pthread.h"
-#include <pthread.h>
 #include <stdio.h>
 #include <sys/ucontext.h>
 #include <time.h>
@@ -41,7 +40,7 @@ void dumpklt(klt_t* k) {
     if(k == NULL) return;
 
     printf("----DUMP KLT----\n");
-    printf("Clock interval: %ld\n", k->clock_internal);
+    printf("Clock interval: %ld\n", k->clock_interval);
     printf("Pthread id:     %ld\n", k->pthread_id);
     printf("Timer id:       %p\n", k->timer_id);
     printf("Running ULT:    %s\n", (k->ult==NULL)?"false":"true");
@@ -53,18 +52,18 @@ static void init_sigevent(sigevent_t* sev, timer_t* timer_id)
 {
     sev->sigev_notify = SIGEV_THREAD_ID;
     sev->_sigev_un._tid = syscall(SYS_gettid);
-    sev->sigev_signo = SIGUSR1;
+    sev->sigev_signo = SIG_RESERVED;
     if(timer_create(CLOCK_MONOTONIC, sev, timer_id) == -1) {
         fprintf(stderr, "failed to create timer");
     }
 }
 
-static void init_timer(timer_t timer_id, __time_t internal_ns)
+static void init_timer(timer_t timer_id, __time_t interval_ns)
 {
     struct itimerspec its;
     const __time_t ns_per_s = 1e9;
-    its.it_value.tv_sec = internal_ns / ns_per_s;
-    its.it_value.tv_nsec = internal_ns % ns_per_s;
+    its.it_value.tv_sec = interval_ns / ns_per_s;
+    its.it_value.tv_nsec = interval_ns % ns_per_s;
     its.it_interval.tv_sec = its.it_value.tv_sec;
     its.it_interval.tv_nsec = its.it_value.tv_nsec;
     if(timer_settime(timer_id, 0, &its, NULL) == -1){
@@ -83,7 +82,7 @@ static void* init_fn(void *this_klt)
 
     pthread_setspecific(klt_k, this_klt);
     init_sigevent(sev_p, timer_id_p);
-    init_timer(*timer_id_p, ((klt_t*)this_klt)->clock_internal);
+    init_timer(*timer_id_p, ((klt_t*)this_klt)->clock_interval);
 
     printf("init_timer end\n");
 
@@ -113,7 +112,6 @@ void sa_sighandler(int signum, siginfo_t *info, void *ctx) {
 
 void test_pthread()
 {
-
     unsigned long a = 10;
     printf("atomic_load(a): %ld\n", atomic_load_u64(&a));
     atomic_store_u64(&a, 123);
@@ -134,6 +132,13 @@ void test_pthread()
     printf("btr: %d\n", atomic_btr_u64(&a, 4));
     printf("a:  %ld\n", a);
 
+    a=0;
+    printf("bts: %d\n", atomic_bts_u64(&a, 63));
+    printf("a:   %p\n", (void*)a);
+    printf("a & (1<<63): %d\n", (a & (1ull<<63))>0);
+
+    return;
+
     struct timespec ts;
     ult_pool[0] = ult_create(STACK_SIZE);
     ult_pool[1] = ult_create(STACK_SIZE);
@@ -145,15 +150,16 @@ void test_pthread()
     printf("tv_sev: %ld\t tv_ns: %ld\n", ts.tv_sec, ts.tv_nsec);
     pthread_t t1, t2;
     klt_t klt1, klt2;
-    klt1.clock_internal = 1e9;
-    klt2.clock_internal = 3e9;
+    klt1.clock_interval = 1e9;
+    klt2.clock_interval = 3e9;
     klt1.flag = 0;
     // signal(SIGUSR1, sigusr1_handler);
 
     struct sigaction sa;
     sa.sa_sigaction = sa_sighandler;
+    sa.sa_flags = SA_RESTART;
 
-    sigaction(SIGUSR1, &sa, NULL);
+    sigaction(SIG_RESERVED, &sa, NULL);
     pthread_key_create(&klt_k, NULL);
     pthread_create(&t1, NULL, init_fn, &klt1);
     // pthread_create(&t2, NULL, init_fn, &klt2);

@@ -1,6 +1,10 @@
 #ifndef _SIGCTX_H
 #define _SIGCTX_H
 
+#if __cplusplus
+extern "C" {
+#endif
+
 #include "types.h"
 #include <stdint.h>
 #include <string.h>
@@ -58,5 +62,9 @@ void dumpgregs(sigctxt_t *c);
 #define set_rbp(c, x) {regs(c)->rbp = x;}
 #define set_rsp(c, x) {regs(c)->rsp = x;}
 #define set_rip(c, x) {regs(c)->rip = x;}
+
+#if __cplusplus
+}
+#endif
 
 #endif

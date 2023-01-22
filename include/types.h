@@ -1,13 +1,14 @@
 #ifndef _PCO_TYPES_H
 #define _PCO_TYPES_H
 
-#include "pthread.h"
+#if __cplusplus
+extern "C" {
+#endif
+
 #include "sys/syscall.h"
 #include "sys/types.h"
 #include "signal.h"
-#include "pthread.h"
 #include <bits/types/siginfo_t.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <time.h>
 #include <sys/syscall.h>
@@ -35,6 +36,7 @@ typedef struct _ult {
     __pid_t bound_klt;
     struct timespec last_sched;
     klt_t* klt;
+    struct _ult* next;
     struct _ult_stack stk;
 } ult_t;
 
@@ -42,9 +44,18 @@ typedef struct _klt {
     sigevent_t sev;
     timer_t timer_id;
     pthread_t pthread_id;
-    __time_t clock_internal;
+    __time_t clock_interval;
     struct _ult* ult;
     unsigned long flag;
+    
+    struct {
+        struct _ult* head;
+        struct _ult* tail;
+    };
 } klt_t;
+
+#if __cplusplus
+}
+#endif
 
 #endif

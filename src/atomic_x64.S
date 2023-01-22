@@ -38,7 +38,7 @@ atomic_store_u64:
 // atomically behaves as follows:
 // atomic_add_u64(u64 *addr, u64 delta):
 //     *addr += delta;
-//     return *delta;
+//     return *addr;
 atomic_add_u64:
     movq %rsi, %rax
     LOCK
@@ -58,7 +58,8 @@ atomic_cas_u64:
     movq %rsi, %rax
     LOCK
     cmpxchgq %rdx, (%rdi)
-    sete %al
+    setz %al
+    movzbl %al, %eax
     retq
 
 // atomically behaves as follows:
@@ -67,16 +68,18 @@ atomic_cas_u64:
 //     *addr &= (1 << shift);
 //     return ret;
 atomic_bts_u64:
+    xorl %eax, %eax
     LOCK
     btsq %rsi, (%rdi)
-    movq $0, %rax
+    # movq $0, %rax
     setc %al
     retq
 
 atomic_btr_u64:
+    xorl %eax, %eax
     LOCK
     btrq %rsi, (%rdi)
-    movq $0, %rax
+    # movq $0, %rax
     setc %al
     retq
 
@@ -87,22 +90,26 @@ read_rflags:
     retq
 
 atomic_load_u128:
-    movq %rax, %rbx
-    movq %rdx, %rcx
+    movq %rbx, %rax
+    movq %rcx, %rdx
     LOCK
     cmpxchg16b (%rdi)
     retq
 
 // %rdi addr
-// %rsi old1
-// %rdx old2
-// %rcx new1
-// %r8  new2
+// %rsi old1 => RDX
+// %rdx old2 => RAX
+// %rcx new1 => RCX
+// %r8  new2 => RBX
 atomic_cas_u128:
-    movq %rsi, %rax
-    movq %rcx, %rbx
-    movq %r8, %rcx
-    LOCK
-    cmpxchg16b (%rdi)
-    sete %al
+    pushq   %rbx
+    movq    %rcx, %rbx
+    movq    %rsi, %rax
+    xorl    %esi, %esi
+    movq    %r8, %rcx
+    lock
+    cmpxchg16b      (%rdi)
+    sete    %sil
+    movl    %esi, %eax
+    popq    %rbx
     retq
