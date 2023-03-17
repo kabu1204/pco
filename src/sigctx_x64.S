@@ -2,6 +2,11 @@
 .type preempt_call, @function
 
 // remember: we are operating on ult stack
+// the preempt_call will be pushed onto a
+// ult stack in signal handler. So it will
+// not be called explicitly.
+// That's why we need to save volatile registers
+// (like rax, rcx) as well. 
 preempt_call:
     // save user registers
     pushq %rbp

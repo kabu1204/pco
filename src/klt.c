@@ -6,6 +6,7 @@
 #include "sigctx.h"
 #include "signal.h"
 #include "pthread.h"
+#include "malloc.h"
 #include <stdio.h>
 #include <sys/ucontext.h>
 #include <time.h>
@@ -17,6 +18,8 @@
 #include "string.h"
 #include "ult.h"
 #include "atomic.h"
+#include "util/list.h"
+#include "scheduler.h"
 
 static ult_t* ult_pool[2];
 
@@ -71,29 +74,35 @@ static void init_timer(timer_t timer_id, __time_t interval_ns)
     }
 }
 
-static void* init_fn(void *this_klt)
+static void* init_fn(void *arg)
 {
-    timer_t* timer_id_p = &((klt_t*)this_klt)->timer_id;
-    sigevent_t* sev_p = &((klt_t*)this_klt)->sev;
+    klt_t* this_klt = arg;
+    timer_t* timer_id_p = &this_klt->timer_id;
+    sigevent_t* sev_p = &this_klt->sev;
     ult_t* init_ult = ult_pool[0];
     tb_context_from_t from;
+
+    init_list_node(&this_klt->local_list);
 
     printf("init_fn called\n");
 
     pthread_setspecific(klt_k, this_klt);
+    klt_loop0(this_klt);
+
+    // init sigevent and timer
     init_sigevent(sev_p, timer_id_p);
-    init_timer(*timer_id_p, ((klt_t*)this_klt)->clock_interval);
+    init_timer(*timer_id_p, this_klt->clock_interval);
 
     printf("init_timer end\n");
 
     init_ult->klt = this_klt;
-    ((klt_t*)this_klt)->ult = init_ult;
-    ((klt_t*)this_klt)->pthread_id = 123;
+    this_klt->ult = init_ult;
+    this_klt->pthread_id = 123;
 
     printf("this_klt = %p\n", this_klt);
     printf("thread_local = %p\n", pthread_getspecific(klt_k));
 
-    // from = tb_context_jump(init_ult->stk.sp, NULL);
+    from = tb_context_jump(init_ult->stk.sp, NULL);
     // printf("jump back\n");
     while(1);
 }
@@ -110,38 +119,22 @@ void sa_sighandler(int signum, siginfo_t *info, void *ctx) {
     write(1, "leaving sighandler\n", 19);
 }
 
+klt_t* klt_create(){
+    klt_t* klt;
+    pthread_t t;
+    init_globalq();
+    klt = (klt_t*)malloc(sizeof(klt_t));
+    init_list_node(&klt->local_list);
+    pthread_create(&t, NULL, init_fn, klt);
+    pthread_detach(t);
+    return klt;
+}
+
 void test_pthread()
 {
-    unsigned long a = 10;
-    printf("atomic_load(a): %ld\n", atomic_load_u64(&a));
-    atomic_store_u64(&a, 123);
-    printf("atomic_load(a): %ld\n", atomic_load_u64(&a));
-    printf("cas: %d\n", atomic_cas_u64(&a, 10, 123));
-    printf("atomic_load(a): %ld\n", atomic_load_u64(&a));
-    printf("cas: %d\n", atomic_cas_u64(&a, 123, 456));
-    printf("atomic_load(a): %ld\n", atomic_load_u64(&a));
-    a = 0;
-    printf("bts: %d\n", atomic_bts_u64(&a, 4));
-    printf("a:  %ld\n", a);
-    printf("bts: %d\n", atomic_bts_u64(&a, 4));
-    printf("a:  %ld\n", a);
-    printf("bts: %d\n", atomic_bts_u64(&a, 0));
-    printf("a:  %ld\n", a);
-    printf("btr: %d\n", atomic_btr_u64(&a, 4));
-    printf("a:  %ld\n", a);
-    printf("btr: %d\n", atomic_btr_u64(&a, 4));
-    printf("a:  %ld\n", a);
-
-    a=0;
-    printf("bts: %d\n", atomic_bts_u64(&a, 63));
-    printf("a:   %p\n", (void*)a);
-    printf("a & (1<<63): %d\n", (a & (1ull<<63))>0);
-
-    return;
-
     struct timespec ts;
-    ult_pool[0] = ult_create(STACK_SIZE);
-    ult_pool[1] = ult_create(STACK_SIZE);
+    ult_pool[0] = ult_create(STACK_SIZE, NULL, NULL);
+    ult_pool[1] = ult_create(STACK_SIZE, NULL, NULL);
 
     printf("ult0->id: %ld\n", ult_pool[0]->id);
     printf("ult1->id: %ld\n", ult_pool[1]->id);

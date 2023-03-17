@@ -6,8 +6,12 @@ extern "C" {
 #endif
 
 #include "types.h"
+#include "common.h"
+#include "context/context.h"
 
-ult_t* ult_create(size_t size);
+void ult_exit(tb_context_from_t from);
+
+ult_t* ult_create(size_t stack_size, ult_func_t entry, void* arg);
 
 #if __cplusplus
 }

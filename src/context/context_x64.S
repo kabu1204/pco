@@ -195,6 +195,49 @@ endfunc
 
 #else
 
+/*
+ * tb_context_t ctx (%rdi)
+ * int offset (%rsi)
+ * u64 val (%rdx)
+*/
+function(context_setq)
+    addq %rsi, %rdi
+    movq %rdx, (%rdi)
+    ret
+endfunc
+
+// allow up to 5 arguments
+function(context_inject_call)
+    // argument passing
+    movq %rbp, %rdi
+    movq %rbx, %rsi
+    movq %r15, %rdx
+    movq %r14, %rcx
+    movq %r13, %r8
+
+    // for 16bytes align
+    subq $8, %rsp
+    leaq __inject_end(%rip), %rcx
+    pushq %rcx
+
+    jmp *%r12
+
+__inject_end:
+
+    addq $8, %rsp
+
+    // continue
+    popq %r12
+    popq %r13
+    popq %r14
+    popq %r15
+    popq %rbx
+    popq %rbp
+
+    popq %r8
+    jmp *%r8
+endfunc
+
 /* make context (refer to boost.context)
  *
  *             ------------------------------------------------------------------------------------------

@@ -16,6 +16,7 @@ extern "C" {
 #include "unistd.h"
 #include "context/context.h"
 #include "arch.h"
+#include "util/list.h"
 
 static pthread_key_t klt_k;
 // struct _klt;
@@ -33,10 +34,10 @@ typedef struct _ult_stack {
 
 typedef struct _ult {
     unsigned long id;
-    __pid_t bound_klt;
+    __pid_t bound_klt_id;
+    int bound_klt;
     struct timespec last_sched;
     klt_t* klt;
-    struct _ult* next;
     struct _ult_stack stk;
 } ult_t;
 
@@ -47,11 +48,8 @@ typedef struct _klt {
     __time_t clock_interval;
     struct _ult* ult;
     unsigned long flag;
-    
-    struct {
-        struct _ult* head;
-        struct _ult* tail;
-    };
+
+    struct list_node local_list;
 } klt_t;
 
 #if __cplusplus

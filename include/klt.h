@@ -20,6 +20,8 @@ void test_pthread();
 
 void dumpklt(klt_t* k);
 
+klt_t* klt_create();
+
 #if __cplusplus
 }
 #endif

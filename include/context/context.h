@@ -23,6 +23,7 @@
  * @ingroup     platform
  *
  * modified by Alvin at 2018/12/21, 2021/04/09
+ * modified by kabu1204 at 2022/1/28
  */
 #pragma once
 
@@ -54,6 +55,29 @@ typedef struct __tb_context_from_t {
  * @param from          the from-context
  */
 typedef void (*tb_context_func_t)(tb_context_from_t from);
+
+/*
+ * @param ctx context to set
+ * @param offset
+ * @param val
+ * @brief equivalent with: movq val, offset(%rsp)
+*/
+void context_setq(tb_context_t ctx, long long offset, unsigned long val);
+
+/*
+ * @brief call %r12, after return, continue the original routine
+*/
+void context_inject_call();
+
+/*
+ * @param ctx context to set
+ * @param addr function address
+ * @param arg argument of the function
+ * 
+ * @return ctx after pushing the call
+ * @brief after context jump, the function will be called
+*/
+tb_context_t context_push_call1(tb_context_t ctx, unsigned long addr, unsigned long arg);
 
 /*! make context from the given stack space and the callback function
  *

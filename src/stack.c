@@ -5,14 +5,9 @@
 #include "malloc.h"
 #include "pthread.h"
 #include "stack.h"
+#include "log.h"
 
-void ult_entry(tb_context_from_t from) {
-    klt_t *klt = pthread_getspecific(klt_k);
-    printf("thread_local = %p\n", pthread_getspecific(klt_k));
-    printf("klt %ld is running this ult %ld\n", klt->pthread_id, klt->ult->id);
-}
-
-int ult_stack_init(ult_stack_t* stk, size_t size){
+int ult_stack_init(ult_stack_t* stk, tb_context_func_t func, size_t size){
     if(stk == NULL){
         return -1;
     }
@@ -22,8 +17,10 @@ int ult_stack_init(ult_stack_t* stk, size_t size){
     }
 
     stk->space = malloc(size);
+    INFO("stack bottom: %p\n", stk->space);
 
-    stk->sp = tb_context_make(stk->space, size, ult_entry);
+    stk->sp = tb_context_make(stk->space, size, func);
+    INFO("tb context sp: %p\n", stk->sp);
 
     return 0;
 }
