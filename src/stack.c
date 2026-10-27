@@ -5,22 +5,20 @@
 #include "malloc.h"
 #include "pthread.h"
 #include "stack.h"
-#include "log.h"
 
 int ult_stack_init(ult_stack_t* stk, tb_context_func_t func, size_t size){
-    if(stk == NULL){
+    /* The initial context needs room at the top of the stack. Reject tiny
+     * stacks before tb_context_make writes to them. */
+    if(stk == NULL || func == NULL || size < 1024){
         return -1;
     }
 
-    if(stk->space != NULL) {
-        free(stk->space);
-    }
-
-    stk->space = malloc(size);
-    INFO("stack bottom: %p\n", stk->space);
+    char *space = malloc(size);
+    if (space == NULL) return -1;
+    free(stk->space);
+    stk->space = space;
 
     stk->sp = tb_context_make(stk->space, size, func);
-    INFO("tb context sp: %p\n", stk->sp);
 
     return 0;
 }

@@ -21,6 +21,7 @@ int atomic_btr_u64(u64* addr, u64 shift);
 
 u64 read_rflags();
 
+/* addr must point to a 16-byte-aligned u128. */
 u128 atomic_load_u128(u128* addr);
 
 int atomic_cas_u128(u128* addr, u128 old, u128 new_);

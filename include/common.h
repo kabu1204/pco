@@ -10,7 +10,8 @@ typedef unsigned long u64;
 typedef unsigned char u8;
 typedef long long i64;
 typedef void* (*ult_func_t)(void*);
-typedef struct {
+/* cmpxchg16b requires its memory operand to be 16-byte aligned. */
+typedef struct __attribute__((aligned(16))) {
     u64 flag, data;
 } u128;
 

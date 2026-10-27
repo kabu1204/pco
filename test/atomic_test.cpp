@@ -20,6 +20,20 @@ TEST(AtomicTest, atomic_load_u64){
     EXPECT_EQ(atomic_load_u64(&a), 123);
 }
 
+TEST(AtomicTest, flagsAnd128BitAlignment){
+    u64 flags;
+    asm volatile("pushfq; popq %0" : "=r"(flags));
+    // The reserved bit and interrupt-enable bit are stable across the call.
+    EXPECT_EQ(read_rflags() & 0x202, flags & 0x202);
+    EXPECT_GE(alignof(u128), 16u);
+    struct Holder { char byte; u128 value; } holder;
+    holder.value = {17, 42};
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(&holder.value) % 16, 0u);
+    const u128 loaded = atomic_load_u128(&holder.value);
+    EXPECT_EQ(loaded.flag, 17u);
+    EXPECT_EQ(loaded.data, 42u);
+}
+
 TEST(AtomicTest, atomic_store_u64){
     u64 a = 123;
     EXPECT_EQ(atomic_load_u64(&a), 123);

@@ -1,0 +1,11 @@
+add_executable(pco_latency latency.c)
+target_link_libraries(pco_latency PRIVATE pco pthread)
+
+find_path(PCO_ZSTD_INCLUDE_DIR zstd.h)
+find_library(PCO_ZSTD_LIBRARY zstd)
+if(PCO_ZSTD_INCLUDE_DIR AND PCO_ZSTD_LIBRARY)
+    target_sources(pco_latency PRIVATE zstd_workload.c)
+    target_include_directories(pco_latency PRIVATE ${PCO_ZSTD_INCLUDE_DIR})
+    target_link_libraries(pco_latency PRIVATE ${PCO_ZSTD_LIBRARY})
+    target_compile_definitions(pco_latency PRIVATE PCO_HAVE_ZSTD=1)
+endif()

@@ -208,6 +208,9 @@ endfunc
 
 // allow up to 5 arguments
 function(context_inject_call)
+    // Preserve the context and private-data values returned by the jump.
+    pushq %rax
+    pushq %rsi
     // argument passing
     movq %rbp, %rdi
     movq %rbx, %rsi
@@ -215,15 +218,21 @@ function(context_inject_call)
     movq %r14, %rcx
     movq %r13, %r8
 
-    // for 16bytes align
-    subq $8, %rsp
-    leaq __inject_end(%rip), %rcx
-    pushq %rcx
+    // The saved context begins on a 16-byte boundary; pushing the return
+    // address gives the injected function the SysV entry alignment.
+    leaq __inject_end(%rip), %r11
+    pushq %r11
 
     jmp *%r12
 
 __inject_end:
 
+    popq %rsi
+    popq %rax
+    movq %rsi, %rdx
+
+    // Skip the saved floating-point control state in the original context.
+    // The injected function preserves it according to the SysV ABI.
     addq $8, %rsp
 
     // continue
@@ -247,9 +256,9 @@ endfunc
  *
  *                                                       func     __end     __entry
  *             ------------------------------------------------------------------------------------------
- * context:   |   r12   |   r13   |   r14   |   r15   |   rbx   |   rbp   |   rip   | args | padding ... |
+ * context:   | mxcsr/cw |   r12   |   r13   |   r14   |   r15   |   rbx   |   rbp   |   rip   | args |
  *             ------------------------------------------------------------------------------------------
- *            0         8         16        24        32        40        48        56        
+ *            0          8         16        24        32        40        48        56        64
  *                                                                                  |  16-align for macosx
  *                                                                                  |
  *                                                                       esp when jump to function
@@ -271,18 +280,22 @@ function(tb_context_make)
     andq %r8, %rax
 
     // reserve space for context-data on context-stack
-    leaq -56(%rax), %rax
+    leaq -64(%rax), %rax
+
+    // New contexts inherit the creating thread's floating-point controls.
+    stmxcsr (%rax)
+    fnstcw 4(%rax)
 
     // context.rbx = func
-    movq %rdx, 32(%rax)
+    movq %rdx, 40(%rax)
 
     // context.rip = the address of label __entry
     leaq __entry(%rip), %rcx
-    movq %rcx, 48(%rax)
+    movq %rcx, 56(%rax)
 
     // context.end = the address of label __end
     leaq __end(%rip), %rcx
-    movq %rcx, 40(%rax)
+    movq %rcx, 48(%rax)
 
     // return the context pointer
     ret 
@@ -335,11 +348,21 @@ function(tb_context_jump)
     pushq %r13
     pushq %r12
 
+    // The SysV ABI makes MXCSR control bits and the x87 control word
+    // callee-saved. Each suspended context needs its own copy.
+    subq $8, %rsp
+    stmxcsr (%rsp)
+    fnstcw 4(%rsp)
+
     // save the old context(rsp) to rax
     movq %rsp, %rax
 
     // switch to the new context(rsp) and stack
     movq %rdi, %rsp
+
+    ldmxcsr (%rsp)
+    fldcw 4(%rsp)
+    addq $8, %rsp
 
     // restore registers of the new context
     popq %r12

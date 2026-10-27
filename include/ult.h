@@ -13,6 +13,9 @@ void ult_exit(tb_context_from_t from);
 
 ult_t* ult_create(size_t stack_size, ult_func_t entry, void* arg);
 
+/* Release an unsubmitted ULT. The caller must not submit it concurrently. */
+int ult_destroy(ult_t* ult);
+
 #if __cplusplus
 }
 #endif

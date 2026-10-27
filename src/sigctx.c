@@ -1,5 +1,6 @@
 #include "sigctx.h"
 #include <string.h>
+#include <unistd.h>
 
 size_t copy_hex(unsigned long x, char *dst, size_t start, char end) {
     char buf[20] = {end};

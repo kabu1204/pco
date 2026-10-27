@@ -18,22 +18,25 @@ endif()
 
 message(${CMAKE_BINARY_DIR}/src)
 
-# GTest
-include(FetchContent)
-FetchContent_Declare(
-  googletest
-  GIT_REPOSITORY    https://github.com/google/googletest.git
-  GIT_TAG           b796f7d44681514f58a683a3a71ff17c94edb0c1
-)
-# For Windows: Prevent overriding the parent project's compiler/linker settings
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
-
 include_directories(include)
 
+include(CTest)
 add_subdirectory(src)
+add_subdirectory(benchmark)
 
-add_subdirectory(test)
+if(BUILD_TESTING)
+    find_package(GTest QUIET)
+    if(NOT GTest_FOUND)
+        include(FetchContent)
+        FetchContent_Declare(
+          googletest
+          GIT_REPOSITORY https://github.com/google/googletest.git
+          GIT_TAG b796f7d44681514f58a683a3a71ff17c94edb0c1
+        )
+        set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(googletest)
+    endif()
+    add_subdirectory(test)
+endif()
 
 set_target_properties(pco PROPERTIES COMPILE_FLAGS "-save-temps")
-set_target_properties(pco_test PROPERTIES COMPILE_FLAGS "-save-temps")

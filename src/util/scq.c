@@ -10,7 +10,7 @@ size_t align16_backward(size_t x) {
 }
 
 void print_bits(u64 x){
-    char buf[65];
+    char buf[66];
     int p=0;
     u64 i=(1ull<<63);
     while(i){
@@ -25,15 +25,16 @@ void print_bits(u64 x){
 lscq_t* lscq_create(){
     scq_t* cq = scq_create();
     lscq_t* q = malloc(sizeof(lscq_t));
-    q->head = q->tail = cq;
+    q->first = q->head = q->tail = cq;
     return q;
 }
 
 void lscq_destroy(lscq_t* q){
-    while (q->head) {
-        scq_t* t = q->head->next;
-        scq_free(q->head);
-        q->head = t;
+    scq_t* current = q->first;
+    while (current) {
+        scq_t* next = current->next;
+        scq_free(current);
+        current = next;
     }
     free(q);
 }
@@ -41,12 +42,13 @@ void lscq_destroy(lscq_t* q){
 void lscq_push(lscq_t* q, u64 val){
     scq_t *cq, *new_scq, *next;
     while(1){
-        cq = atomic_load_u64(&q->tail);
+        cq = __atomic_load_n(&q->tail, __ATOMIC_SEQ_CST);
         get_scq_push(cq);
         // printf("cq: %p\ncq->next: %p\n", cq, cq->next);
-        next = (scq_t*)atomic_load_u64((u64*)(&cq->next));
+        next = __atomic_load_n(&cq->next, __ATOMIC_SEQ_CST);
         if(next!=NULL){
-            atomic_cas_u64(&q->tail, cq, next);
+            scq_t *expected_tail = cq;
+            __atomic_compare_exchange_n(&q->tail, &expected_tail, next, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
             put_scq_push(cq);
             continue;
         }
@@ -61,7 +63,7 @@ void lscq_push(lscq_t* q, u64 val){
             to guarantee its successful linkage.
         */
         pthread_spin_lock(&cq->lock);
-        if((scq_t*)atomic_load_u64((u64*)(&cq->next))!=NULL){
+        if(__atomic_load_n(&cq->next, __ATOMIC_SEQ_CST)!=NULL){
             pthread_spin_unlock(&cq->lock);
             put_scq_push(cq);
             continue;
@@ -69,8 +71,10 @@ void lscq_push(lscq_t* q, u64 val){
         new_scq = scq_create();
         scq_push(new_scq, val);
         get_scq_push(new_scq);
-        if(atomic_cas_u64(&cq->next, NULL, new_scq)){
-            atomic_cas_u64(&q->tail, cq, new_scq);
+        void *expected = NULL;
+        if(__atomic_compare_exchange_n(&cq->next, &expected, new_scq, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)){
+            scq_t *expected_tail = cq;
+            __atomic_compare_exchange_n(&q->tail, &expected_tail, new_scq, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
             pthread_spin_unlock(&cq->lock);
             put_scq_push(new_scq);
             put_scq_push(cq);
@@ -85,18 +89,18 @@ void lscq_push(lscq_t* q, u64 val){
 int lscq_pop(lscq_t* q, u64* volatile val){
     scq_t *cq, *new_scq, *next;
     while(1){
-        cq = atomic_load_u64(&q->head);
+        cq = __atomic_load_n(&q->head, __ATOMIC_SEQ_CST);
         get_scq(cq);
         if(likely(scq_pop(cq, val))){
             put_scq(cq);
             return 1;
         }
-        next = atomic_load_u64(&cq->next);
+        next = __atomic_load_n(&cq->next, __ATOMIC_SEQ_CST);
         if(next==NULL){
             put_scq(cq);
             return 0;
         }
-        atomic_store_u64(&cq->threshold, SCQ_RESET_THRESHOLD);
+        __atomic_store_n(&cq->threshold, SCQ_RESET_THRESHOLD, __ATOMIC_SEQ_CST);
         if(scq_pop(cq, val)){
             put_scq(cq);
             return 1;
@@ -105,13 +109,11 @@ int lscq_pop(lscq_t* q, u64* volatile val){
         //     cq = NULL;
         // }
         // pthread_spin_lock(&cq->lock);
-        atomic_cas_u64(&q->head, cq, next); // after this CAS, q->head != cq
-        if(atomic_add_u64(&cq->refcount, -1)==0){
-            // printf("freeing full scq: %p\n", cq);
-            while(unlikely(atomic_load_u64(&cq->push_count)>0));
-            scq_free(cq);
-            // pthread_spin_unlock(&cq->lock);
-        }
+        scq_t *expected_head = cq;
+        __atomic_compare_exchange_n(&q->head, &expected_head, next, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+        /* Readers may have loaded cq before incrementing its refcount.
+           Reclaiming here would race with those readers and producers. */
+        put_scq(cq);
         // pthread_spin_unlock(&cq->lock);
     }
 }
@@ -176,8 +178,8 @@ int scq_push(scq_t* q, u64 val){
             if(!atomic_cas_u128(&q->entries[j], ent, new_ent)) {
                 goto retry;
             }
-            if(atomic_load_u64(&q->threshold) != SCQ_RESET_THRESHOLD){
-                atomic_store_u64(&q->threshold, SCQ_RESET_THRESHOLD);
+            if(__atomic_load_n(&q->threshold, __ATOMIC_SEQ_CST) != SCQ_RESET_THRESHOLD){
+                __atomic_store_n(&q->threshold, SCQ_RESET_THRESHOLD, __ATOMIC_SEQ_CST);
             }
             return 1;
         }
@@ -189,7 +191,7 @@ int scq_push(scq_t* q, u64 val){
 }
 
 int scq_pop(scq_t* q, u64* volatile val){
-    if(atomic_load_u64(&q->threshold) < 0){
+    if(__atomic_load_n(&q->threshold, __ATOMIC_SEQ_CST) < 0){
         return 0;
     }
     u64 H, j, hcycle, ecycle, is_safe, is_unused, T;
@@ -223,10 +225,10 @@ int scq_pop(scq_t* q, u64* volatile val){
         T &= SCQ_TAIL_MASK;
         if(T<=H+1){
             scq_catchup(q, T, H+1);
-            atomic_add_u64(&q->threshold, -1);
+            __atomic_fetch_sub(&q->threshold, 1, __ATOMIC_SEQ_CST);
             return 0;
         }
-        if(atomic_add_u64(&q->threshold, -1)+1 <= 0){
+        if(__atomic_fetch_sub(&q->threshold, 1, __ATOMIC_SEQ_CST) <= 0){
             return 0;
         }
     }

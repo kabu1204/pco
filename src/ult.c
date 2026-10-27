@@ -1,35 +1,46 @@
 #include "ult.h"
 #include "atomic.h"
-#include "context/context.h"
-#include "malloc.h"
+#include "scheduler.h"
 #include "stack.h"
-#include "util/scq.h"
-#include "log.h"
+#include "ult_local.h"
+#include <errno.h>
+#include <stdlib.h>
 
 static u64 global_id = 0;
 
-extern lscq_t* global_q;
-
-#define new_ult_id() (atomic_add_u64(&global_id, 1))
-
+/* A new context starts on its own stack. The worker passes the ULT as the
+ * private argument, and the context returned by the first jump is the
+ * worker's scheduler stack. */
 void ult_exit(tb_context_from_t from) {
-    printf("ult exit\n");
-    // klt_t *klt = pthread_getspecific(klt_k);
-    // printf("thread_local = %p\n", pthread_getspecific(klt_k));
-    // printf("klt %ld is running this ult %ld\n", klt->pthread_id, klt->ult->id);
+    ult_t *ult = (ult_t *)from.priv;
+    ult->sched_ctx = from.ctx;
+    pco_preempt_unblock();
+    ult->entry(ult->arg);
+    pco_ult_local_cleanup(ult);
+    ult_finish();
+    abort(); /* ult_finish must never return to a finished stack. */
 }
 
 ult_t* ult_create(size_t stack_size, ult_func_t entry, void* arg) {
-    // TODO(opt): maybe we can use va_list instead of void* in c++
-    ult_t* ult = malloc(sizeof(ult_t));
-    
-    ult->id = new_ult_id();
-    ult->bound_klt = 0;
+    if (entry == NULL) return NULL;
 
-    ult_stack_init(&ult->stk, ult_exit, stack_size);
+    ult_t *ult = calloc(1, sizeof(*ult));
+    if (ult == NULL) return NULL;
+    if (ult_stack_init(&ult->stk, ult_exit, stack_size) != 0) {
+        free(ult);
+        return NULL;
+    }
 
-    ult->stk.sp = context_push_call1(ult->stk.sp, (unsigned long)entry, (unsigned long)arg);
-    INFO("injected context pointer: %p\n", ult->stk.sp);
-    
+    ult->id = atomic_add_u64(&global_id, 1);
+    ult->entry = entry;
+    ult->arg = arg;
     return ult;
+}
+
+int ult_destroy(ult_t *ult) {
+    if (!ult) return EINVAL;
+    if (ult->queue_state != 0) return EBUSY;
+    free(ult->stk.space);
+    free(ult);
+    return 0;
 }

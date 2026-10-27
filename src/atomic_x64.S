@@ -65,7 +65,7 @@ atomic_cas_u64:
 // atomically behaves as follows:
 // atomic_bts_u64(u64* addr, u64 shift):
 //     ret = *addr & (1 << shift);
-//     *addr &= (1 << shift);
+//     *addr |= (1 << shift);
 //     return ret;
 atomic_bts_u64:
     xorl %eax, %eax
@@ -85,8 +85,7 @@ atomic_btr_u64:
 
 read_rflags:
     pushfq
-    addq $8, %rsp
-    movq (%rsp), %rax
+    popq %rax
     retq
 
 atomic_load_u128:

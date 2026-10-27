@@ -7,6 +7,7 @@ extern "C" {
 
 #include "types.h"
 
+/* stk must be zero-initialized on its first call. */
 int ult_stack_init(ult_stack_t* stk, tb_context_func_t func, size_t size);
 
 #if __cplusplus

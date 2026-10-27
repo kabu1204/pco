@@ -67,6 +67,9 @@ typedef struct lscq {
     scq_t* head;
     u8 _[CPU_CACHE_LINE_SIZE-sizeof(void *)];
     scq_t* tail;
+    /* Keep all segments alive until destruction: a thread can have read head
+       or tail before it has acquired a reference to that segment. */
+    scq_t* first;
 } lscq_t;
 
 lscq_t* lscq_create();
